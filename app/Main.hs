@@ -14,10 +14,12 @@ import Data.Map.Strict (fromList, Map(..), (!), size, singleton, elems)
 import Data.List (nub, partition, delete)
 import Data.Maybe (fromJust)
 import Data.Char (toUpper, toLower)
+import Data.Set as Set (fromList, union, null, empty, map, elemAt , deleteAt, toList, Set(..), partition, singleton, size)
+import Control.Exception (try, SomeException)
 -- sh :: MonadIO io => Shell a -> io ()
 
 main :: IO ()
-main = view $ do 
+main = sh $ do 
   let workingDirectory = ls "./"  
   paths                                  <- getPaths workingDirectory
   parentSubdirectories                   <- liftIO $ getSubdirectories paths 
@@ -27,29 +29,40 @@ main = view $ do
   childrenSubs                           <- liftIO $ getSubdirectories treePaths 
   childrenFiles                          <- liftIO $ getFiles treePaths 
   mapSubsFiles                           <- (main2 childrenSubs) :: Shell [Map [Subdirectory] [File]]
-  let files = ((getOnlyFiles mapSubsFiles) ++ (parentFiles) ++ (childrenFiles))
+  let files = (Set.fromList $ getOnlyFiles mapSubsFiles) `union` (Set.fromList parentFiles) `union` (Set.fromList childrenFiles)
             where getOnlyFiles mapSF = Prelude.concat ((Prelude.concat (elems <$> mapSF)) :: [[File]])     
-      folders = sortFilesByExtension files
-  liftIO $ putStrLn $ show folders  
+      counter = 0
+      folders = sortFilesByExtension counter files 
   liftIO $ makeFolders folders 
 
-makeFolders :: [Folder] -> IO ()
-makeFolders folders = sequence_ (makeFolder <$> folders) 
+makeFolders :: Set Folder -> IO ()
+makeFolders folders = sequence_ (makeFolder <$> (Set.toList folders))
      where makeFolder :: Folder -> IO () 
-           makeFolder folder = mkdir (folderName folder)
+           makeFolder folder = do 
+             result <- Control.Exception.try (mkdir (folderName folder))  :: (IO (Either SomeException ()))
+             case result of 
+                Left _  -> pure ()
+                Right _ -> pure ()
          
 
-sortFilesByExtension :: [File] -> [Folder]
-sortFilesByExtension files = 
-    case files of 
-        []       -> [] 
-        (f : fs) -> case (Data.List.partition (hasSameExtension f) fs) of 
-                     (listThatDoes, listThatDoesn't) -> 
+
+sortFilesByExtension :: Int -> Set File -> Set Folder
+sortFilesByExtension counter files = 
+    if counter >= (Set.size files) 
+        then Set.empty 
+        else case Set.null files of 
+              True      -> Set.empty
+              False     -> case (Set.partition (hasSameExtension (elemAt counter files)) (deleteAt counter files)) of 
+                              (setThatDoes, setThatDoesn't) -> 
+                                       Set.singleton 
+                                       (
                                        ( Folder 
-                                         { folderName  = "./" ++ (mkFolderName (extension' f)) ++ "alec"
-                                         , folderFiles = listThatDoes
+                                         { folderName  = "./" ++ (mkFolderName (extension' (elemAt counter files))) ++ "alec"
+                                         , folderFiles = setThatDoes
                                          }
-                                       ) : (sortFilesByExtension listThatDoesn't)
+                                       ) 
+                                       )`union` (sortFilesByExtension (counter + 1) setThatDoesn't)
+
 hasSameExtension :: File -> File -> Bool 
 hasSameExtension file1 file2 = (extension' file1) == (extension' file2)
 
@@ -82,18 +95,18 @@ main2 subs  = do
 newtype Subdirectory = Subdirectory FilePath deriving (Eq, Show, Ord)
 fromSub (Subdirectory fp) = fp
 
-newtype File = File FilePath deriving (Eq, Show)
+newtype File = File FilePath deriving (Eq, Show, Ord)
 fromFile (File fp) = fp
 
 type TreeDict = Map Subdirectory (Shell FilePath) 
 
 data Folder = Folder 
             { folderName  :: String
-            , folderFiles :: [File]
-            } deriving (Show, Eq)
+            , folderFiles :: Set File 
+            } deriving (Show, Eq, Ord)
 
 makeTrees :: [Subdirectory] -> TreeDict
-makeTrees subs = fromList ((\sub -> (sub , lstree $ fromSub sub)) <$> subs)
+makeTrees subs = Data.Map.Strict.fromList ((\sub -> (sub , lstree $ fromSub sub)) <$> subs)
 
 lookupTreeVals :: [Subdirectory] -> TreeDict -> [Shell FilePath]
 lookupTreeVals subs treedict = 

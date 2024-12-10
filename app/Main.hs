@@ -8,8 +8,8 @@ import Data.Text as T hiding (find)
 
 import Turtle.Shell (sh, Shell(..), select, view, reduce)
 import Turtle.Prelude (ls, find, testdir, testfile, lstree, mkdir, cp)
-import Turtle (splitDirectories, liftIO, Fold(..), hasExtension, extension)
-import Control.Monad (filterM, mapM, sequence, liftM2, sequence_)
+import Turtle (splitDirectories, liftIO, Fold(..), hasExtension, extension, filename)
+import Control.Monad (filterM, mapM, sequence, liftM2, sequence_, void)
 import Data.Map.Strict (fromList, Map(..), (!), size, singleton, elems)
 import Data.List (nub, partition, delete)
 import Data.Maybe (fromJust)
@@ -39,10 +39,12 @@ makeFolders :: Set Folder -> IO ()
 makeFolders folders = sequence_ (makeFolder <$> (Set.toList folders))
      where makeFolder :: Folder -> IO () 
            makeFolder folder = do 
-             result <- Control.Exception.try (mkdir (folderName folder))  :: (IO (Either SomeException ()))
-             case result of 
-                Left _  -> pure ()
-                Right _ -> pure ()
+               void (Control.Exception.try (mkdir (folderName folder)) :: (IO (Either SomeException ())))  
+               let paths = Set.toList (folderFiles folder)
+               sequence_ $ 
+                (\oldPath -> (cp oldPath ((folderName folder) ++ "/" ++ (filename oldPath))) :: IO ()) <$> 
+                  (fromFile <$> paths)
+             
          
 
 

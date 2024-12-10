@@ -7,17 +7,17 @@ import Data.Text as T hiding (find)
 -- Sort these files into folders based on their extension
 
 import Turtle.Shell (sh, Shell(..), select, view, reduce)
-import Turtle.Prelude (ls, find, testdir, testfile, lstree, mkdir)
+import Turtle.Prelude (ls, find, testdir, testfile, lstree, mkdir, cp)
 import Turtle (splitDirectories, liftIO, Fold(..), hasExtension, extension)
 import Control.Monad (filterM, mapM, sequence, liftM2, sequence_)
 import Data.Map.Strict (fromList, Map(..), (!), size, singleton, elems)
 import Data.List (nub, partition, delete)
 import Data.Maybe (fromJust)
-import Data.Char (toUpper)
+import Data.Char (toUpper, toLower)
 -- sh :: MonadIO io => Shell a -> io ()
 
 main :: IO ()
-main = sh $ do 
+main = view $ do 
   let workingDirectory = ls "./"  
   paths                                  <- getPaths workingDirectory
   parentSubdirectories                   <- liftIO $ getSubdirectories paths 
@@ -28,15 +28,16 @@ main = sh $ do
   childrenFiles                          <- liftIO $ getFiles treePaths 
   mapSubsFiles                           <- (main2 childrenSubs) :: Shell [Map [Subdirectory] [File]]
   let files = ((getOnlyFiles mapSubsFiles) ++ (parentFiles) ++ (childrenFiles))
-            where getOnlyFiles mapSF = Prelude.concat (Prelude.concat (elems <$> mapSF))     
-      folders = nub $ sortFilesByExtension files 
+            where getOnlyFiles mapSF = Prelude.concat ((Prelude.concat (elems <$> mapSF)) :: [[File]])     
+      folders = sortFilesByExtension files
+  liftIO $ putStrLn $ show folders  
   liftIO $ makeFolders folders 
 
 makeFolders :: [Folder] -> IO ()
 makeFolders folders = sequence_ (makeFolder <$> folders) 
      where makeFolder :: Folder -> IO () 
-           makeFolder folder = do 
-            mkdir (folderName folder)
+           makeFolder folder = mkdir (folderName folder)
+         
 
 sortFilesByExtension :: [File] -> [Folder]
 sortFilesByExtension files = 
@@ -45,7 +46,7 @@ sortFilesByExtension files =
         (f : fs) -> case (Data.List.partition (hasSameExtension f) fs) of 
                      (listThatDoes, listThatDoesn't) -> 
                                        ( Folder 
-                                         { folderName  = "./" ++ (mkFolderName (extension' f)) ++ "Root-Beer-Guy"
+                                         { folderName  = "./" ++ (mkFolderName (extension' f)) ++ "alec"
                                          , folderFiles = listThatDoes
                                          }
                                        ) : (sortFilesByExtension listThatDoesn't)
@@ -60,6 +61,7 @@ extension' (File filepath) =
 
 mkFolderName :: String -> String 
 mkFolderName s = delete '.' (Data.Char.toUpper <$> s) 
+mkFolderEx s = '.' : (Data.Char.toLower <$> s)
 
 
 
@@ -81,6 +83,7 @@ newtype Subdirectory = Subdirectory FilePath deriving (Eq, Show, Ord)
 fromSub (Subdirectory fp) = fp
 
 newtype File = File FilePath deriving (Eq, Show)
+fromFile (File fp) = fp
 
 type TreeDict = Map Subdirectory (Shell FilePath) 
 
